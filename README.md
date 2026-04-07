@@ -61,7 +61,10 @@ Some components (avatar system) are integrated using external sources.
 
 ---
 
-## 📷 Demo
+## 📷 Demo  Screen shot
+<img width="1348" height="890" alt="image" src="https://github.com/user-attachments/assets/d3ff9865-d559-4daa-b87d-4eeedcafd24e" />
+<img width="1884" height="879" alt="Screenshot 2026-04-07 145128" src="https://github.com/user-attachments/assets/adc96627-68ef-4f48-8f52-e0c841a05361" />
 
-(Add screenshots here)
+
+
 
