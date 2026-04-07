@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8"/>
+<title>Rukmani - Female Voice Assistant with Lip Sync</title>
+
+<style>
+body{
+  margin:0;
+  background:black;
+  overflow:hidden;
+  font-family:Arial;
+}
+
+/* bubble */
+#bubble{
+  position:fixed;
+  bottom:20px;
+  right:20px;
+  width:80px;
+  height:80px;
+  border-radius:50%;
+  background:#00f5ff;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:32px;
+  cursor:pointer;
+  box-shadow:0 0 25px cyan;
+  z-index:10;
+  transition:0.3s;
+}
+
+#bubble:hover{
+  transform:scale(1.1);
+  box-shadow:0 0 35px cyan;
+}
+
+/* fullscreen */
+#screen{
+  position:fixed;
+  inset:0;
+  display:none;
+  background:black;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  z-index:20;
+}
+
+/* avatar */
+#avatarWrap{
+  width:480px;
+  height:480px;
+  overflow:hidden;
+  border-radius:50%;
+  box-shadow:0 0 50px cyan;
+  border:2px solid cyan;
+}
+
+#avatar{
+  width:1000px;
+  height:1000px;
+  transform:translate(-260px,-170px);
+  border:none;
+}
+
+/* chat */
+#chatBox{
+  position:absolute;
+  bottom:40px;
+  width:60%;
+  max-width:600px;
+  min-height:60px;
+  background:#111;
+  color:#00f5ff;
+  border-radius:25px;
+  display:flex;
+  align-items:center;
+  padding:15px 25px;
+  font-size:16px;
+  word-wrap:break-word;
+  border:1px solid cyan;
+  box-shadow:0 0 20px rgba(0,255,255,0.3);
+  line-height:1.5;
+}
+
+/* close button */
+#closeBtn{
+  position:absolute;
+  top:20px;
+  right:20px;
+  color:white;
+  font-size:35px;
+  cursor:pointer;
+  z-index:30;
+  width:50px;
+  height:50px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:50%;
+  background:rgba(255,255,255,0.1);
+  transition:0.3s;
+}
+
+#closeBtn:hover{
+  background:rgba(255,0,0,0.3);
+  transform:scale(1.1);
+}
+
+/* status indicator */
+#statusIndicator{
+  position:absolute;
+  top:20px;
+  left:20px;
+  color:cyan;
+  font-size:14px;
+  background:rgba(0,0,0,0.7);
+  padding:8px 15px;
+  border-radius:20px;
+  border:1px solid cyan;
+}
+</style>
+</head>
+
+<body>
+
+<div id="bubble">🤖</div>
+
+<div id="screen">
+  <div id="statusIndicator">⚡ Listening for "Rukmani"</div>
+  <div id="closeBtn">✖</div>
+  <div id="avatarWrap">
+    <iframe id="avatar"
+      src="https://met4citizen.github.io/HeadAudio/openai.html"
+      allow="microphone">
+    </iframe>
+  </div>
+  <div id="chatBox">Say "Rukmani" to wake me up</div>
+</div>
+
+<script>
+const bubble = document.getElementById("bubble");
+const screen = document.getElementById("screen");
+const chatBox = document.getElementById("chatBox");
+const closeBtn = document.getElementById("closeBtn");
+const statusIndicator = document.getElementById("statusIndicator");
+const avatarFrame = document.getElementById("avatar");
+
+let isActive = false;
+let femaleVoice = null;
+let recognitionActive = true;
+let ytWindow = null;
+let lastProcessedText = ""; // Prevent duplicate processing
+
+/* =========================
+   INITIALIZE FEMALE VOICE
+========================= */
+function initFemaleVoice() {
+  // Try to get female voice
+  const loadVoices = () => {
+    const voices = window.speechSynthesis.getVoices();
+    
+    if (voices.length > 0) {
+      // Priority list for female voices
+      const femaleVoicePatterns = [
+        'Google UK English Female',
+        'Samantha',
+        'Microsoft Zira',
+        'Google हिन्दी',
+        'Female',
+        'Mojave',
+        'Siri'
+      ];
+      
+      // Try to find a female voice
+      for (let pattern of femaleVoicePatterns) {
+        femaleVoice = voices.find(v => v.name.includes(pattern));
+        if (femaleVoice) break;
+      }
+      
+      // Fallback to any English voice
+      if (!femaleVoice) {
+        femaleVoice = voices.find(v => v.lang.startsWith('en'));
+      }
+      
+      console.log('Selected voice:', femaleVoice ? femaleVoice.name : 'Default');
+      
+      if (femaleVoice) {
+        statusIndicator.innerText = `🎤 Voice: ${femaleVoice.name}`;
+      }
+    }
+  };
+  
+  // Chrome loads voices asynchronously
+  if (window.speechSynthesis.onvoiceschanged !== undefined) {
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+  }
+  
+  // Load immediately
+  loadVoices();
+  
+  // Also try after a delay
+  setTimeout(loadVoices, 500);
+}
+
+/* =========================
+   SPEAK WITH LIP SYNC
+========================= */
+function speak(text) {
+  if (!text) return;
+  
+  // Stop any ongoing speech
+  window.speechSynthesis.cancel();
+  
+  // Create utterance
+  const utterance = new SpeechSynthesisUtterance(text);
+  
+  // Set female voice if available
+  if (femaleVoice) {
+    utterance.voice = femaleVoice;
+  } else {
+    // Try to set female-like characteristics
+    utterance.pitch = 1.3;
+    utterance.rate = 1.0;
+  }
+  
+  // Start lip sync when speech begins
+  utterance.onstart = function() {
+    console.log('Speech started, sending lip sync command');
+    
+    // Send multiple times to ensure it reaches
+    for (let i = 0; i < 3; i++) {
+      setTimeout(() => {
+        try {
+          avatarFrame.contentWindow.postMessage({
+            type: "speak",
+            text: text
+          }, "https://met4citizen.github.io");
+        } catch(e) {
+          console.log('Lip sync error:', e);
+        }
+      }, i * 100);
+    }
+    
+    statusIndicator.innerText = "🔊 Speaking...";
+  };
+  
+  utterance.onend = function() {
+    console.log('Speech ended');
+    statusIndicator.innerText = "🎤 Listening...";
+    
+    // Send stop signal to avatar
+    try {
+      avatarFrame.contentWindow.postMessage({
+        type: "stop"
+      }, "https://met4citizen.github.io");
+    } catch(e) {}
+  };
+  
+  utterance.onerror = function(e) {
+    console.log('Speech error:', e);
+    statusIndicator.innerText = "❌ Speech error";
+  };
+  
+  // Speak
+  window.speechSynthesis.speak(utterance);
+  chatBox.innerText = "Rukmani: " + text;
+}
+
+/* =========================
+   YOUTUBE PLAY VIDEO (FIXED)
+========================= */
+async function playYoutube(query) {
+  chatBox.innerText = "🔍 Searching: " + query;
+  statusIndicator.innerText = "📺 Opening YouTube...";
+  
+  // Clean up query - remove command words but keep the full song name
+  let searchQuery = query.toLowerCase()
+    .replace(/^(play|on|youtube|video|please|can you|will you)\s*/g, '')
+    .replace(/\s+(on|in|at|for)\s+.*$/g, '') // Remove prepositions at the end
+    .trim();
+  
+  // If query becomes empty, use original
+  if (!searchQuery) {
+    searchQuery = query;
+  }
+  
+  console.log('Searching YouTube for:', searchQuery);
+  
+  // Close existing YouTube window if open
+  if (ytWindow && !ytWindow.closed) {
+    ytWindow.close();
+  }
+  
+  // Encode for URL
+  const encodedQuery = encodeURIComponent(searchQuery);
+  
+  // Use YouTube's search with video filter
+  const youtubeUrl = `https://www.youtube.com/results?search_query=${encodedQuery}&sp=EgIQAQ%3D%3D`;
+  
+  // Open new window
+  ytWindow = window.open(youtubeUrl, '_blank');
+  
+  if (ytWindow) {
+    speak(`Searching for ${searchQuery} on YouTube`);
+  } else {
+    // Pop-up blocked
+    speak("Please allow pop-ups to open YouTube");
+  }
+}
+
+/* =========================
+   OFFLINE RESPONSES
+========================= */
+function getOfflineResponse(text) {
+  text = text.toLowerCase();
+  
+  const responses = {
+    'hello': "Hello! I'm Rukmani. How can I help you today?",
+    'hi': "Hi there! What can I do for you?",
+    'time': `The current time is ${new Date().toLocaleTimeString()}`,
+    'how are you': "I'm doing great! Thanks for asking. How can I assist you?",
+    'your name': "My name is Rukmani. I'm your personal AI assistant.",
+    'thank': "You're welcome! Is there anything else you need?",
+    'thanks': "Happy to help! Let me know if you need anything else.",
+    'who are you': "I'm Rukmani, your AI assistant created to help you with various tasks."
+  };
+  
+  for (let [key, value] of Object.entries(responses)) {
+    if (text.includes(key)) {
+      return value;
+    }
+  }
+  
+  return "I'm using offline mode right now. Could you please repeat that?";
+}
+
+/* =========================
+   LLM CALL
+========================= */
+async function askLLM(msg) {
+  try {
+    const response = await fetch("http://localhost:1234/v1/chat/completions", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        model: "phi-3",
+        messages: [{
+          role: "user",
+          content: msg
+        }],
+        temperature: 0.7,
+        max_tokens: 100
+      })
+    });
+    
+    if (!response.ok) throw new Error('Server not responding');
+    
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch(e) {
+    console.log("Using offline mode:", e);
+    return getOfflineResponse(msg);
+  }
+}
+
+/* =========================
+   HANDLE COMMAND
+========================= */
+async function handleCommand(text) {
+  // Prevent duplicate processing
+  if (lastProcessedText === text && Date.now() - lastProcessedTime < 3000) {
+    console.log('Duplicate command ignored');
+    return;
+  }
+  
+  lastProcessedText = text;
+  lastProcessedTime = Date.now();
+  
+  chatBox.innerText = "You: " + text;
+  statusIndicator.innerText = "⚙️ Processing...";
+  
+  // Check for YouTube commands
+  if (text.toLowerCase().includes('youtube') || 
+      text.toLowerCase().includes('play ') ||
+      text.toLowerCase().includes('video')) {
+    
+    // Extract the full search query
+    let query = text.toLowerCase()
+      .replace(/^(can you |please |will you |)/i, '')
+      .replace(/\s+(on|in|at)\s+youtube.*$/i, '') // Remove trailing YouTube part
+      .replace(/^(play|search for|find|show)\s+/i, '')
+      .trim();
+    
+    await playYoutube(query);
+    return;
+  }
+  
+  // Regular conversation
+  const reply = await askLLM(text);
+  speak(reply);
+}
+
+/* =========================
+   OPEN SCREEN
+========================= */
+function openScreen() {
+  if (isActive) return;
+  
+  isActive = true;
+  screen.style.display = "flex";
+  statusIndicator.innerText = "🎤 Initializing...";
+  
+  // Wait for iframe to load
+  setTimeout(() => {
+    speak("Hi! I'm Rukmani. How can I help you?");
+    statusIndicator.innerText = "🎤 Listening...";
+  }, 1000);
+}
+
+/* =========================
+   CLOSE SCREEN
+========================= */
+function closeScreen() {
+  isActive = false;
+  screen.style.display = "none";
+  window.speechSynthesis.cancel();
+  statusIndicator.innerText = "⚡ Listening for 'Rukmani'";
+  
+  // Stop avatar
+  try {
+    avatarFrame.contentWindow.postMessage({
+      type: "stop"
+    }, "https://met4citizen.github.io");
+  } catch(e) {}
+}
+
+/* =========================
+   VOICE RECOGNITION
+========================= */
+function initSpeechRecognition() {
+  if (!('webkitSpeechRecognition' in window)) {
+    chatBox.innerText = "Speech recognition not supported";
+    return null;
+  }
+  
+  const recognition = new webkitSpeechRecognition();
+  recognition.continuous = true;
+  recognition.interimResults = false;
+  recognition.lang = 'en-US';
+  recognition.maxAlternatives = 1;
+  
+  recognition.onstart = function() {
+    console.log('Speech recognition active');
+    statusIndicator.innerText = isActive ? "🎤 Listening..." : "⚡ Listening for 'Rukmani'";
+  };
+  
+  recognition.onresult = function(event) {
+    // Get the last result
+    const result = event.results[event.results.length - 1];
+    const text = result[0].transcript.toLowerCase().trim();
+    
+    console.log('Heard:', text);
+    
+    // Wake word detection
+    if (text.includes('rukmani') && !isActive) {
+      openScreen();
+      return;
+    }
+    
+    // Process command if screen is active
+    if (isActive && text.length > 0) {
+      handleCommand(text);
+    }
+  };
+  
+  recognition.onerror = function(event) {
+    console.log('Recognition error:', event.error);
+    
+    if (event.error === 'no-speech') {
+      // Ignore no-speech errors
+      return;
+    }
+    
+    // Restart recognition on other errors
+    if (recognitionActive) {
+      setTimeout(() => {
+        try { recognition.start(); } catch(e) {}
+      }, 1000);
+    }
+  };
+  
+  recognition.onend = function() {
+    console.log('Recognition ended');
+    
+    // Restart if still active
+    if (recognitionActive) {
+      try {
+        recognition.start();
+      } catch(e) {
+        console.log('Restart failed:', e);
+      }
+    }
+  };
+  
+  // Start recognition
+  try {
+    recognition.start();
+  } catch(e) {
+    console.log('Start failed:', e);
+  }
+  
+  return recognition;
+}
+
+/* =========================
+   INITIALIZATION
+========================= */
+window.onload = function() {
+  initFemaleVoice();
+  initSpeechRecognition();
+  
+  // Event listeners
+  bubble.onclick = openScreen;
+  closeBtn.onclick = closeScreen;
+  
+  // Handle iframe load
+  avatarFrame.onload = function() {
+    console.log('Avatar iframe loaded');
+  };
+  
+  // Message listener for avatar responses
+  window.addEventListener('message', function(event) {
+    if (event.origin === 'https://met4citizen.github.io') {
+      console.log('Message from avatar:', event.data);
+    }
+  });
+  
+  // Add lastProcessedTime variable
+  window.lastProcessedTime = Date.now();
+};
+
+// Cleanup
+window.onunload = function() {
+  window.speechSynthesis.cancel();
+  recognitionActive = false;
+  
+  if (ytWindow && !ytWindow.closed) {
+    ytWindow.close();
+  }
+};
+</script>
+
+</body>
+</html>  
